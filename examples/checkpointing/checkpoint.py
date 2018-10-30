@@ -67,6 +67,12 @@ class DevitoCheckpoint(Checkpoint):
             ptr[i_ptr_lo:i_ptr_hi] = o.data.flatten()[:]
             i_ptr_lo = i_ptr_hi
 
+    def get_data(self, timestep):
+        return self.objects[0].data
+
+    def get_data_location(self, timestep):
+        return self.objects[0].data
+
     def load(self, ptr):
         """Copy live-data from this Checkpoint object into the memory given by
         the ptr."""
