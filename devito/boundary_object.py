@@ -1,4 +1,8 @@
-class Boundary(Grid, BoundaryFunction):
+from devito import Grid, Function
+
+import numpy as np
+
+class Boundary(object):
 
     """
     An object that contains the data relevant for implementing the
@@ -11,18 +15,36 @@ class Boundary(Grid, BoundaryFunction):
 
     """
 
-    def __init__(self):
+    def __init__(self, Grid, BoundaryFunction):
     
         # Step1: Check what kind of boundary function we have.
         # To start, this will only work for boundaries of the form
         # y_b = f(x).
         
-        print(callable(BoundaryFunction))
+        if not callable(BoundaryFunction):
+            raise NotImplementedError
+        
+        self._primary_nodes(Grid, BoundaryFunction)
+        
 
+    def _primary_nodes(self, grid, BoundaryFunction):
+        """Compute 'primary boundaru nodes."""
+        
+        # Should all this be done symbolically or not?
 
-    @property
-    def method1(self):
-        """My method."""
-        return self._method1
+        if not np.ndim(grid.dimensions) <= 2:
+            raise NotImplementedError
+        
+        dimensions = grid.dimensions
+
+        # FIX ME: Must be a better way of doing this:        
+        shape = grid.shape
+        extent = grid.extent
+        
+        
+        
+        self._primary_nodes = None
+        
+        return self._primary_nodes
 
  
