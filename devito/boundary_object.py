@@ -168,6 +168,7 @@ class Boundary(object):
 
         # Remove entries containing a -ve value
         node_dict = tuple((t for t in node_dict if not min(t) < 0))
+        node_dict = tuple((t for t in node_dict if not min(t) >= pn.size))
         # Remove repeated entries
         node_dict = tuple(set(node_dict))
                 
@@ -177,17 +178,36 @@ class Boundary(object):
     
     def _eta_list(self, grid, BoundaryFunction):
     
+        # Tidy up and remove this 're-sets'
         node_list = self._node_list
+        
+        shape = np.asarray(grid.shape)
+        extent = np.asarray(grid.extent)
+        
+        spacing = extent/(shape-1)
+        
+        pn = self._primary_nodes
+        
+        x_coords = np.linspace(0,extent[0],shape[0])
+        y_coords = np.linspace(0,extent[1],shape[1])
         
         x_list = ()
         y_list = ()
         
         for j in range(0,len(node_list)):
+            
             etax = 0
             etay = 0
             
+            # Compute etay (the easy bit)
+            element_node = node_list[j]
+            etay = BoundaryFunction(x_coords[element_node[0]])-y_coords[element_node[1]]
+            
             x_list = x_list + (etax,)
-            y_list = y_list + (etay,) 
+            y_list = y_list + (etay,)
+            
+            
+        print(y_list)
     
 ########################## old #########################################
            
