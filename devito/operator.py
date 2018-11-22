@@ -98,14 +98,14 @@ class Operator(Callable):
         # Insert code for C-level performance profiling
         iet, self._profiler = self._profile_sections(iet)
 
+        # Insert code for MPI support
+        iet = self._generate_mpi(iet, **kwargs)
+
         # Translate into backend-specific representation
         iet = self._specialize_iet(iet, **kwargs)
 
         # Insert the required symbol declarations
         iet = iet_insert_C_decls(iet, self._func_table)
-
-        # Insert code for MPI support
-        iet = self._generate_mpi(iet, **kwargs)
 
         # Insert data and pointer casts for array parameters
         iet = self._build_casts(iet)

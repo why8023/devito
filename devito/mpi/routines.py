@@ -6,15 +6,24 @@ from devito.dimension import Dimension
 from devito.mpi.utils import get_views
 from devito.ir.equations import DummyEq
 from devito.ir.iet import (ArrayCast, Call, Callable, Conditional, Expression,
-                           Iteration, List, iet_insert_C_decls)
+                           Iteration, List, iet_insert_C_decls, iet_analyze,
+                           derive_parameters)
 from devito.symbolics import CondNe, FieldFromPointer, Macro
 from devito.types import Array, Symbol, LocalObject, OWNED, HALO, LEFT, RIGHT
-from devito.tools import numpy_to_mpitypes
+from devito.tools import numpy_to_mpitypes, filter_ordered
 
-__all__ = ['copy', 'sendrecv', 'update_halo']
+__all__ = ['copy', 'sendrecv', 'update_halo', 'nthreads_parameters']
 
 
-def copy(f, fixed, swap=False):
+def nthreads_parameters(params):
+    from devito.dle.backends.parallelizer import NThreads
+    out = filter_ordered(
+        [p for p in params if isinstance(p, NThreads)],
+        key=lambda x: x.name)
+    return out
+
+
+def copy(f, fixed, swap=False, specializer=None):
     """
     Construct a :class:`Callable` capable of copying: ::
 
@@ -51,11 +60,17 @@ def copy(f, fixed, swap=False):
     for i, d in reversed(list(zip(buf_indices, buf_dims))):
         iet = Iteration(iet, i, d.symbolic_size - 1)  # -1 as Iteration generates <=
     iet = List(body=[ArrayCast(dat), ArrayCast(buf), iet])
-    parameters = [buf] + list(buf.shape) + [dat] + list(dat.shape) + dat_offsets
+    iet = iet_analyze(iet)
+    if specializer:
+        iet = specializer(iet)
+
+    parameters = ([buf] + list(buf.shape) + [dat] + list(dat.shape) + dat_offsets
+                  + nthreads_parameters(derive_parameters(iet)))
+
     return Callable(name, iet, 'void', parameters, ('static',))
 
 
-def sendrecv(f, fixed):
+def sendrecv(f, fixed, gather_f, scatter_f):
     """Construct an IET performing a halo exchange along arbitrary
     dimension and side."""
     assert f.is_Function
@@ -76,14 +91,19 @@ def sendrecv(f, fixed):
     fromrank = Symbol(name='fromrank')
     torank = Symbol(name='torank')
 
-    parameters = [bufg] + list(bufg.shape) + [dat] + list(dat.shape) + ofsg
+    parameters = ([bufg] + list(bufg.shape) + [dat] + list(dat.shape) + ofsg
+                  + nthreads_parameters(gather_f.parameters))
     gather = Call('gather_%s' % f.name, parameters)
-    parameters = [bufs] + list(bufs.shape) + [dat] + list(dat.shape) + ofss
+    parameters = ([bufs] + list(bufs.shape) + [dat] + list(dat.shape) + ofss
+                  + nthreads_parameters(scatter_f.parameters))
     scatter = Call('scatter_%s' % f.name, parameters)
 
     # The scatter must be guarded as we must not alter the halo values along
     # the domain boundary, where the sender is actually MPI.PROC_NULL
     scatter = Conditional(CondNe(fromrank, Macro('MPI_PROC_NULL')), scatter)
+
+    # Similarly for the gather
+    gather = Conditional(CondNe(torank, Macro('MPI_PROC_NULL')), gather)
 
     srecv = MPIStatusObject(name='srecv')
     rrecv = MPIRequestObject(name='rrecv')
@@ -100,12 +120,13 @@ def sendrecv(f, fixed):
 
     iet = List(body=[recv, gather, send, waitsend, waitrecv, scatter])
     iet = List(body=[ArrayCast(dat), iet_insert_C_decls(iet)])
-    parameters = ([dat] + list(dat.shape) + list(bufs.shape) +
-                  ofsg + ofss + [fromrank, torank, comm])
+    parameters = ([dat] + list(dat.shape) + list(bufs.shape)
+                  + ofsg + ofss + [fromrank, torank, comm]
+                  + nthreads_parameters(gather_f.parameters + scatter_f.parameters))
     return Callable('sendrecv_%s' % f.name, iet, 'void', parameters, ('static',))
 
 
-def update_halo(f, fixed):
+def update_halo(f, fixed, sendrecv_f):
     """
     Construct an IET performing a halo exchange for a :class:`TensorFunction`.
     """
@@ -135,8 +156,9 @@ def update_halo(f, fixed):
         rsizes, roffsets = mapper[(d, RIGHT, HALO)]
         assert lsizes == rsizes
         sizes = lsizes
-        parameters = ([f] + list(f.symbolic_shape) + sizes + loffsets +
-                      roffsets + [rpeer, lpeer, comm])
+        parameters = ([f] + list(f.symbolic_shape) + sizes + loffsets
+                      + roffsets + [rpeer, lpeer, comm]
+                      + nthreads_parameters(sendrecv_f.parameters))
         call = Call('sendrecv_%s' % f.name, parameters)
         mask = Symbol(name='m%sl' % d)
         body.append(Conditional(mask, call))
@@ -147,16 +169,18 @@ def update_halo(f, fixed):
         lsizes, loffsets = mapper[(d, LEFT, HALO)]
         assert rsizes == lsizes
         sizes = rsizes
-        parameters = ([f] + list(f.symbolic_shape) + sizes + roffsets +
-                      loffsets + [lpeer, rpeer, comm])
+        parameters = ([f] + list(f.symbolic_shape) + sizes + roffsets
+                      + loffsets + [lpeer, rpeer, comm]
+                      + nthreads_parameters(sendrecv_f.parameters))
         call = Call('sendrecv_%s' % f.name, parameters)
         mask = Symbol(name='m%sr' % d)
         body.append(Conditional(mask, call))
         masks.append(mask)
 
     iet = List(body=body)
-    parameters = ([f] + masks + [comm, nb] + list(fixed.values()) +
-                  [d.symbolic_size for d in f.dimensions])
+    parameters = ([f] + masks + [comm, nb] + list(fixed.values())
+                  + [d.symbolic_size for d in f.dimensions]
+                  + nthreads_parameters(sendrecv_f.parameters))
     return Callable('halo_exchange_%s' % f.name, iet, 'void', parameters, ('static',))
 
 

@@ -6,7 +6,7 @@ from devito.ir.iet import (Call, List, HaloSpot, MetaCall, FindNodes, Transforme
                            filter_iterations, retrieve_iteration_tree)
 from devito.ir.support import align_accesses
 from devito.parameters import configuration
-from devito.mpi import copy, sendrecv, update_halo
+from devito.mpi import copy, sendrecv, update_halo, nthreads_parameters
 from devito.operator import OperatorRunnable
 from devito.tools import flatten
 
@@ -32,11 +32,11 @@ class OperatorCore(OperatorRunnable):
         callables = OrderedDict()
         for hs in halo_spots:
             for f, v in hs.fmapper.items():
-                callables[f] = [update_halo(f, v.loc_indices)]
-                callables[f].append(sendrecv(f, v.loc_indices))
-                callables[f].append(copy(f, v.loc_indices))
-                callables[f].append(copy(f, v.loc_indices, True))
-        callables = flatten(callables.values())
+                gather = copy(f, v.loc_indices, specializer=self._specialize_iet)
+                scatter = copy(f, v.loc_indices, True, specializer=self._specialize_iet)
+                sendrecv_f = sendrecv(f, v.loc_indices, gather, scatter)
+                callables[f] = [update_halo(f, v.loc_indices, sendrecv_f),
+                                sendrecv_f, gather, scatter]
 
         # Replace HaloSpots with suitable calls performing the halo update
         mapper = {}
@@ -47,9 +47,12 @@ class OperatorCore(OperatorRunnable):
                 nb = f.grid.distributor._C_neighbours.obj
                 loc_indices = list(v.loc_indices.values())
                 dsizes = [d.symbolic_size for d in f.dimensions]
-                parameters = [f] + stencil + [comm, nb] + loc_indices + dsizes
+                parameters = ([f] + stencil + [comm, nb] + loc_indices + dsizes
+                              + nthreads_parameters(callables[f][0].parameters))
                 call = Call('halo_exchange_%s' % f.name, parameters)
                 mapper.setdefault(hs, []).append(call)
+
+        callables = flatten(callables.values())
 
         # Sorting is for deterministic code generation. However, in practice,
         # we don't expect `cstructs` to contain more than one element because
