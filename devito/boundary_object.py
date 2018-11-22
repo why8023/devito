@@ -187,7 +187,7 @@ class Boundary(object):
     
     def _eta_list(self, grid, BoundaryFunction, InverseBoundaryFunction):
     
-        # Tidy up and remove this 're-sets'
+        # Tidy up and remove these 're-sets'
         node_list = self._node_list
         
         shape = np.asarray(grid.shape)
@@ -215,7 +215,7 @@ class Boundary(object):
             
             # Now compute etax
             if InverseBoundaryFunction == None:
-                # Fix this to attempt and fsolve - possible with a warning?
+                # FIX ME: Implement an attempt to use fsolve (possibly with a warning).
                 raise NotImplementedError
             else:
                 # Possibly a multivalued result or NaN
@@ -230,16 +230,14 @@ class Boundary(object):
         ex = pd.Series(x_list)
         ey = pd.Series(y_list)
         
-        # FIX ME: Further node list filtering should possible be done here?
+        
         
         # Data structure
         eta_list = pd.DataFrame({'Node': nodes,
                               'etax': ex, 'etay': ey})
         is_below =  eta_list['etay'] > -2*np.pi*np.finfo(float).eps
         eta_list = eta_list[is_below]
-        
-        # More filters: Need to think about the y filter more
-        
+        # FIX ME: Further node list filtering should possibly be done here?
         
         self._eta_list = eta_list
         
@@ -304,6 +302,12 @@ class Boundary(object):
             ex = eta_list.iat[j,1]
             ey = eta_list.iat[j,2]
             
+            if ex.size > 1:
+                if abs(ex[0]-ex[1]) < 2*np.pi*np.finfo(float).eps:
+                    ex = ex[0]
+                else:
+                    ex = ex[abs(ex) < 2+2*np.pi*np.finfo(float).eps]
+                
             if ex.size > 1:
                 raise NotImplementedError
             
