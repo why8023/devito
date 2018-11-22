@@ -17,7 +17,7 @@ class Boundary(object):
 
     """
 
-    def __init__(self, Grid, BoundaryFunction):
+    def __init__(self, Grid, BoundaryFunction, InverseBoundaryFunction = None):
     
         # Step1: Check what kind of boundary function we have.
         # To start, this will only work for boundaries of the form:
@@ -43,7 +43,12 @@ class Boundary(object):
             raise NotImplementedError
             
         # Generate eta's
-        self._eta_list(Grid, BoundaryFunction)
+        self._eta_list(Grid, BoundaryFunction, InverseBoundaryFunction)
+        
+        # Finally, generate our stencils
+        self._fd_stencil()
+        
+        #print(self._fd_stencil)
         
 
     def _primary_nodes(self, grid, BoundaryFunction):
@@ -161,14 +166,18 @@ class Boundary(object):
         # Create boundary node list - initial size unknown
         # FIX ME: Disgusting code
         node_dict = ()
+        #for i in range(0,pn.size):
+            #for j in range(-box[i]-1,box[i]+1):
+                #for k in range(-box[i]-1,box[i]+1):
+                    #node_dict = node_dict + ((i+j,pn[i]+k),)
         for i in range(0,pn.size):
-            for j in range(-box[i]-1,box[i]+1):
-                for k in range(-box[i]-1,box[i]+1):
-                    node_dict = node_dict +((i+j,pn[i]+k),)
+            for j in range(-box[i],box[i]):
+                for k in range(-box[i],box[i]):
+                    node_dict = node_dict + ((i+j,pn[i]+k),)
 
         # Remove entries containing a -ve value
         node_dict = tuple((t for t in node_dict if not min(t) < 0))
-        node_dict = tuple((t for t in node_dict if not min(t) >= pn.size))
+        node_dict = tuple((t for t in node_dict if not max(t) >= pn.size))
         # Remove repeated entries
         node_dict = tuple(set(node_dict))
                 
@@ -176,7 +185,7 @@ class Boundary(object):
         
         return self._node_list
     
-    def _eta_list(self, grid, BoundaryFunction):
+    def _eta_list(self, grid, BoundaryFunction, InverseBoundaryFunction):
     
         # Tidy up and remove this 're-sets'
         node_list = self._node_list
@@ -201,103 +210,163 @@ class Boundary(object):
             
             # Compute etay (the easy bit)
             element_node = node_list[j]
-            etay = BoundaryFunction(x_coords[element_node[0]])-y_coords[element_node[1]]
+            etay = (BoundaryFunction(x_coords[element_node[0]])- \
+                                     y_coords[element_node[1]])/spacing[1]
+            
+            # Now compute etax
+            if InverseBoundaryFunction == None:
+                # Fix this to attempt and fsolve - possible with a warning?
+                raise NotImplementedError
+            else:
+                # Possibly a multivalued result or NaN
+                etax = (InverseBoundaryFunction(y_coords[element_node[1]])- \
+                                                x_coords[element_node[0]])/spacing[0]
             
             x_list = x_list + (etax,)
             y_list = y_list + (etay,)
             
-            
-        print(y_list)
+         
+        nodes = pd.Series(node_list)
+        ex = pd.Series(x_list)
+        ey = pd.Series(y_list)
+        
+        # FIX ME: Further node list filtering should possible be done here?
+        
+        # Data structure
+        eta_list = pd.DataFrame({'Node': nodes,
+                              'etax': ex, 'etay': ey})
+        is_below =  eta_list['etay'] > -2*np.pi*np.finfo(float).eps
+        eta_list = eta_list[is_below]
+        
+        # More filters: Need to think about the y filter more
+        
+        
+        self._eta_list = eta_list
+        
+        return self._eta_list
     
-########################## old #########################################
-           
-    #def _node_list(self, grid):
+    def _fd_stencil(self):
+    
+        eta_list = self._eta_list
         
-        #pn = self._primary_nodes
+        nnodes = len(eta_list.index) # Apparently this is the fastest method
         
-        #dpn = np.zeros((pn.size,), dtype=int)
+        if self.method_order != 4:
+            raise NotImplementedError
         
-        #for j in range(1,pn.size):
-            #if (pn[j] < 0) or (pn[j-1] < 0):
-                #dpn[j-1] = pn.size # Our 'int NaN'
-            #else:
-                #dpn[j-1] = pn[j]-pn[j-1]
-        #if dpn[-2] == pn.size:
-            #dpn[-1] = pn.size
+        # Stencils:
+        def w1(eta):
+            w = np.zeros(self.method_order+1)
+            w[0] = 1/12
+            w[1] = -4/3
+            w[2] = (29+eta*(93+58*eta))/(12*(1+eta)*(1+2*eta))
+            w[3] = -(5+7*eta)/(3*(1+2*eta))
+            w[4] = 0
+            return w
+        def w2(eta):
+            w = np.zeros(self.method_order+1)
+            w[0] = 1/12
+            w[1] = -(8+3*eta*(3+eta))/((2+eta)*(3+2*eta))
+            w[2] = (29+eta*(49+22*eta))/(4*(1+eta)*(3+2*eta))
+            w[3] = -4/3
+            w[4] = 0
+            return w
+        def w3(eta):
+            w = np.zeros(self.method_order+1)
+            w[0] = 1/12
+            w[1] = -(2+eta*(21+eta))/(3*(1+eta)*(1+2*eta))
+            w[2] = (6+eta*(79+2*eta))/(12*eta*(1+2*eta))
+            w[3] = 0
+            w[4] = 0
+            return w
+        def w4(eta):
+            w = np.zeros(self.method_order+1)
+            w[0] = (eta*(10*eta-7))/(2*(2+eta)*(3+2*eta))
+            w[1] = -(2*eta*(2+5*eta))/((1+eta)*(3+2*eta))
+            w[2] = 5/2
+            w[3] = 0
+            w[4] = 0
+            return w
+        def wn(eta):
+            w = np.zeros(self.method_order+1)
+            w[0] = 1/12
+            w[1] = -4/3
+            w[2] = 5/2
+            w[3] = -4/3
+            w[4] = 1/12
+            return w
         
-        ## dpn Cases:
-        ## 0: x stencil doesn't need modifying
-        ## 1: x stencil needs modifying on the left
-        ## 2+: x stencil +dpn-1 points below the primary points
-        ##     require left modification
-        ## -1+: As +ve case but with right modification instead.
+        D_xx_list = ()
+        D_yy_list = ()
         
-        ## Now build the full modification list + logic
-        ## Logic options:
-        ## 'y': Modify y stencil only
-        ## 'xl': Modify x stencil only on the left
-        ## 'xr': Modify x stencil only on the right
-        ## 'xm': Modify x stencil only on both left and right
-        ## 'yxl': Modify y stencil and x on the left
-        ## 'yxr': Modify y stencil and x on the right
-        ## 'yxm': Modify y stencil and x on both left and right
-        
-        #count = 0
-        
-        ## This isn't going to work:
-        ## We need to do the below via a recursive object
-        ## BETTER WAY: Create a grid (with redundancy) around the boundary
-        ## and just compute the eta's. A general stencil can then be worked
-        ## out with this info.
-        #coordinate_dict = ()
-        #coordinate_logic = ()
-        #for j in range(0,pn.size):
-            ## Add primary node + logic
-            #coordinate_dict = coordinate_dict + ([j,pn[j]],)
-            #if dpn[j] == pn.size:
-                #coordinate_logic = coordinate_logic + ('DoNothing',)
-            #elif dpn[j] == 0:
-                #coordinate_logic = coordinate_logic + ('y',)
-            #elif dpn[j] > 0:
-                #coordinate_logic = coordinate_logic + ('yxl',)
-            #elif dpn[j] < 0:
-                #coordinate_logic = coordinate_logic + ('yxr',)
-            ## Add other required nodes with this x-coordinate
-            #if coordinate_logic[count] == 'DoNothing':
-                #count+=1
-            #elif coordinate_logic[count] == 'y':
-                #coordinate_dict = coordinate_dict + ([j,pn[j]-1],)
-                #coordinate_logic = coordinate_logic + ('y',)
-                #count+=2
-            #elif coordinate_logic[count] == 'yxl':
-                #coordinate_dict = coordinate_dict + ([j,pn[j]-1],)
-                #coordinate_logic = coordinate_logic + ('y',)
-                #count+=2
-            #elif coordinate_logic[count] == 'yxr':
-                #coordinate_dict = coordinate_dict + ([j,pn[j]-1],)
-                ##coordinate_logic = coordinate_logic + ('y',)
-                #coordinate_logic = coordinate_logic + (['yxl','yxr'],)
-                #count+=2
-            #else:
-                #count+=1
-        
-        #print(count)
+        for j in range(0,nnodes):
+            #print(eta_list.iat[j,0], eta_list.iat[j,1], eta_list.iat[j,2])
+            ex = eta_list.iat[j,1]
+            ey = eta_list.iat[j,2]
             
-        #coordinate = pd.Series(coordinate_dict)
-        #logic = pd.Series(coordinate_logic)
-        #nodes = pd.DataFrame({'coordinate': coordinate,
-                              #'logic': logic})
+            if ex.size > 1:
+                raise NotImplementedError
+            
+            if abs(ex) > 2+2*np.pi*np.finfo(float).eps:
+                w = wn(ex)
+                D_xx_list = D_xx_list + (w,)
+            elif 1.5 <= abs(ex) <= 2+2*np.pi*np.finfo(float).eps:
+                w = w1(abs(np.mod(ex,1)))
+                if ex < 0:
+                    w = w[::-1]
+                D_xx_list = D_xx_list + (w,)
+            elif 1.0 < abs(np.mod(ex,1)) < 1.5:
+                w = w2(abs(np.mod(ex,1)))
+                if ex < 0:
+                    w = w[::-1]
+                D_xx_list = D_xx_list + (w,)
+            elif 0.5 <= abs(ex) <= 1:
+                w = w3(abs(ex))
+                if ex < 0:
+                    w = w[::-1]
+                D_xx_list = D_xx_list + (w,)
+            elif 0.0+2*np.pi*np.finfo(float).eps < abs(ex) < 0.5:
+                w = w4(abs(ex))
+                if ex < 0:
+                    w = w[::-1]
+                D_xx_list = D_xx_list + (w,)
+            else:
+                w = wn(ex)
+                D_xx_list = D_xx_list + (w,)
+                
+            if abs(ey) > 2+2*np.pi*np.finfo(float).eps:
+                w = wn(ey)
+                D_yy_list = D_yy_list + (w,)
+            elif 1.5 <= abs(ey) <= 2+2*np.pi*np.finfo(float).eps:
+                w = w1(abs(np.mod(ey,1)))
+                if ey < 0:
+                    w = w[::-1]
+                D_yy_list = D_yy_list + (w,)
+            elif 1.0 < abs(np.mod(ey,1)) < 1.5:
+                w = w2(abs(np.mod(ey,1)))
+                if ey < 0:
+                    w = w[::-1]
+                D_yy_list = D_yy_list + (w,)
+            elif 0.5 <= abs(ey) <= 1:
+                w = w3(abs(ey))
+                if ey < 0:
+                    w = w[::-1]
+                D_yy_list = D_yy_list + (w,)
+            elif 0.0+2*np.pi*np.finfo(float).eps < abs(ey) < 0.5:
+                w = w4(abs(ey))
+                if ey < 0:
+                    w = w[::-1]
+                D_yy_list = D_yy_list + (w,)
+            else:
+                w = wn(ey)
+                D_yy_list = D_yy_list + (w,)
+                
+        D_xx = pd.Series(D_xx_list)
+        D_yy = pd.Series(D_yy_list)
+                
+        fd_stencil = pd.DataFrame({'Node': eta_list["Node"].values,
+                              'D_xx_stencil': D_xx, 'D_yy_stencil': D_yy})
         
-        ## So data structure should be
-        ## nodes = pd.DataFrame({'coordinate': coordinate,
-        ##                       'etax': etax, 'etay': etay})
-        ## where etay/etax can possibly be 'None' and etax can possibly
-        ## be multivalued (etay cannot be multivalued).
+        self._fd_stencil = fd_stencil
         
-        #print(nodes)
-        
-        #self._secondary_nodes = nodes
-        
-        #return self._secondary_nodes
-
- 
+        return self._fd_stencil
