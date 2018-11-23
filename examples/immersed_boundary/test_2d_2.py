@@ -51,7 +51,7 @@ x,y = grid.dimensions
 # Create our immersed boundar
 boundary_obj = Boundary(grid, boundary_func, iboundary_func)
 
-stencil_data = boundary_obj._fd_stencil
+stencil_data = boundary_obj.stencil()
 
 print(stencil_data)
 

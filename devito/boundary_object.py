@@ -38,13 +38,7 @@ class Boundary(object):
         
         self._primary_nodes(BoundaryFunction, shape, extent, spacing)
         
-        # For 2D case:
-        if np.asarray(Grid.shape).size == 1:
-            """
-            In the 1D case the 'node' is just the primary node.
-            """
-            self._node_list = self._primary_nodes
-        elif np.asarray(Grid.shape).size == 2:
+        if 0 < np.asarray(Grid.shape).size < 3:
             """ Now work out the full list. """
             self._node_list(shape)
         else:
@@ -116,6 +110,18 @@ class Boundary(object):
         then remove duplicate entries.
         """
         pn = self._primary_nodes
+        
+        """ Default box size """
+        ds = max(np.array([self.method_order/2-1, 1], dtype=int))
+        
+        """ Check if we're dealing with a 1D case. """
+        if pn.size == 1:
+            node_dict = ()
+            for j in range(0,ds+1):
+                node_dict += (pn-ds+j,)
+            self._node_list = node_dict
+            return self._node_list
+        
         dpnf = np.zeros((pn.size,), dtype=int)
         dpnb = np.zeros((pn.size,), dtype=int)
         
@@ -139,9 +145,6 @@ class Boundary(object):
         """ Node boxes """
         box = np.zeros((pn.size,), dtype=int)
         
-        """ Default box size """
-        ds = max(np.array([self.method_order/2-1, 1], dtype=int))
-        
         for j in range(0,pn.size):
             d = np.array([abs(dpnb[j]), abs(dpnf[j])], dtype=int)
             d[d >= shape[1]] = -1
@@ -154,7 +157,7 @@ class Boundary(object):
                 box[j] = dm-1
         
         """ Create boundary domain node list - initial size unknown """
-        # FIX ME: Disgusting code
+        # FIX ME: Should be a better algorithm than this available.
         node_dict = ()
         for i in range(0,pn.size):
             for j in range(-box[i],box[i]):
@@ -347,4 +350,7 @@ class Boundary(object):
         
         self._fd_stencil = fd_stencil
         
+        return self._fd_stencil
+
+    def stencil(self):
         return self._fd_stencil
