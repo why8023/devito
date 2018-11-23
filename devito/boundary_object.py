@@ -21,17 +21,18 @@ class Boundary(object):
                  method_order = 4):
         self._method_order = method_order
         
-        # Some things we'll need from, and derived from, Grid:
+        """ Some things we'll need from, and derived from, Grid: """
         shape = np.asarray(Grid.shape)
         extent = np.asarray(Grid.extent)
         spacing = extent/(shape-1)
     
-        # Step1: Check what kind of boundary function we have.
-        # To start, this will only work for boundaries of the form:
-        # x_b = const : 1d.
-        # y_b = f(x), x_b = f^-1(y_b) : 2d.
+        """
+        Step1: Check what kind of boundary function we have.
+        To start, this will only work for boundaries of the form:
+        x_b = const : 1d.
+        y_b = f(x), x_b = f^-1(y_b) : 2d.
+        """
         # FIX ME: Add support for boundaries specified in text files.
-        
         if not callable(BoundaryFunction):
             raise NotImplementedError
         
@@ -39,22 +40,22 @@ class Boundary(object):
         
         # For 2D case:
         if np.asarray(Grid.shape).size == 1:
-            # Add 1D case
-            self._node_list = None
+            """
+            In the 1D case the 'node' is just the primary node.
+            """
+            self._node_list = self._primary_nodes
         elif np.asarray(Grid.shape).size == 2:
-            # Now work out the full list
-            self._node_list(Grid)
+            """ Now work out the full list. """
+            self._node_list(shape)
         else:
             raise NotImplementedError
             
-        # Generate eta's
+        """ Generate eta's. FIX ME: Shouldn't be 'private'? """
         self._eta_list(BoundaryFunction, InverseBoundaryFunction,
                        shape, extent, spacing)
         
-        # Finally, generate our stencils
+        """ Finally, generate our stencil. """
         self._fd_stencil()
-        
-        #print(self._fd_stencil)
         
     @property
     def method_order(self):
@@ -86,45 +87,34 @@ class Boundary(object):
                 raise ValueError("Given boundary location is not \
                                   in the computational domain.")
         elif shape.size == 2:
-            # FIX ME: Support non zero origin case
+            # FIX ME: Add support for non (0,0) origins
             x_coords = np.linspace(0,extent[0],shape[0])
             y_coords = np.linspace(0,extent[1],shape[1])
             boundary = BoundaryFunction(x_coords)
             pn = np.floor(boundary/spacing[1]).astype(int)
-            pn[pn < 0] = -1 # Replace this with some 'None' equiv
+            # Represent nodes outside the computational domain with -1.
+            pn[pn < 0] = -1 
             pn[pn >= shape[1]] = -1
-            # FIX ME: Disgusting code
-            boundary_logic_list = [None]*shape[0]
-            for j in range(0,shape[0]):
-                if pn[j] >= shape[0]:
-                    pass
-                elif pn[j] < 0:
-                    pass
-                else:
-                    if abs(boundary[j]-y_coords[pn[j]]) < 2*np.pi*np.finfo(float).eps:
-                        boundary_logic_list[j] = 'on'
-                    else:
-                        boundary_logic_list[j] = 'off'
         else:
+            # FIX ME: Add 3D case etc.
             raise NotImplementedError
         
         self._primary_nodes = pn
-        self.boundary_logic = boundary_logic_list
         
         return self._primary_nodes
 
-    def _node_list(self, grid):
+    def _node_list(self, shape):
         
-        # Tidy this stuff up
-        shape = np.asarray(grid.shape)
+        """
+        Generate list of possible nodes (with redundancy)
+        that require their stencil modified.
+        """
+        # FIX ME: Needs testing for complicated topography.
         
-        # Generate list of possible nodes (with redundancy)
-        # that require their stencil modified. Remove duplicates
-        # Note for extreme topography this may require amending
-        
-        # Make list from creating a box around primary nodes
-        # then remove duplicate entries
-        
+        """
+        Make list from creating a box around primary nodes
+        then remove duplicate entries.
+        """
         pn = self._primary_nodes
         dpnf = np.zeros((pn.size,), dtype=int)
         dpnb = np.zeros((pn.size,), dtype=int)
@@ -146,10 +136,10 @@ class Boundary(object):
         if dpnb[1] == pn.size:
             dpnb[0] = pn.size
             
-        # Node boxes
+        """ Node boxes """
         box = np.zeros((pn.size,), dtype=int)
         
-        # default size
+        """ Default box size """
         ds = max(np.array([self.method_order/2-1, 1], dtype=int))
         
         for j in range(0,pn.size):
@@ -163,22 +153,18 @@ class Boundary(object):
             else:
                 box[j] = dm-1
         
-        # Create boundary node list - initial size unknown
+        """ Create boundary domain node list - initial size unknown """
         # FIX ME: Disgusting code
         node_dict = ()
-        #for i in range(0,pn.size):
-            #for j in range(-box[i]-1,box[i]+1):
-                #for k in range(-box[i]-1,box[i]+1):
-                    #node_dict = node_dict + ((i+j,pn[i]+k),)
         for i in range(0,pn.size):
             for j in range(-box[i],box[i]):
                 for k in range(-box[i],box[i]):
                     node_dict = node_dict + ((i+j,pn[i]+k),)
 
-        # Remove entries containing a -ve value
+        """ Remove 'out of bounds' entries. """
         node_dict = tuple((t for t in node_dict if not min(t) < 0))
         node_dict = tuple((t for t in node_dict if not max(t) >= pn.size))
-        # Remove repeated entries
+        """ Remove repeated entries. """
         node_dict = tuple(set(node_dict))
                 
         self._node_list = node_dict
@@ -188,10 +174,8 @@ class Boundary(object):
     def _eta_list(self, BoundaryFunction, InverseBoundaryFunction,
                   shape, extent, spacing):
     
-        # Tidy up and remove these 're-sets'
-        node_list = self._node_list
-        
         pn = self._primary_nodes
+        node_list = self._node_list
         
         x_coords = np.linspace(0,extent[0],shape[0])
         y_coords = np.linspace(0,extent[1],shape[1])
@@ -204,17 +188,17 @@ class Boundary(object):
             etax = 0
             etay = 0
             
-            # Compute etay (the easy bit)
+            """ Compute etay (the easy bit). """
             element_node = node_list[j]
             etay = (BoundaryFunction(x_coords[element_node[0]])- \
                                      y_coords[element_node[1]])/spacing[1]
             
-            # Now compute etax
+            """ Now compute etax. """
             if InverseBoundaryFunction == None:
                 # FIX ME: Implement an attempt to use fsolve (possibly with a warning).
                 raise NotImplementedError
             else:
-                # Possibly a multivalued result or NaN
+                """ Note: Possibly a multivalued result or NaN. """
                 etax = (InverseBoundaryFunction(y_coords[element_node[1]])- \
                                                 x_coords[element_node[0]])/spacing[0]
             
@@ -226,14 +210,11 @@ class Boundary(object):
         ex = pd.Series(x_list)
         ey = pd.Series(y_list)
         
-        
-        
-        # Data structure
+        """ Data structure """
         eta_list = pd.DataFrame({'Node': nodes,
                               'etax': ex, 'etay': ey})
         is_below =  eta_list['etay'] > -2*np.pi*np.finfo(float).eps
         eta_list = eta_list[is_below]
-        # FIX ME: Further node list filtering should possibly be done here?
         
         self._eta_list = eta_list
         
@@ -243,7 +224,7 @@ class Boundary(object):
     
         eta_list = self._eta_list
         
-        nnodes = len(eta_list.index) # Apparently this is the fastest method
+        nnodes = len(eta_list.index)
         
         if self.method_order != 4:
             raise NotImplementedError
@@ -294,7 +275,6 @@ class Boundary(object):
         D_yy_list = ()
         
         for j in range(0,nnodes):
-            #print(eta_list.iat[j,0], eta_list.iat[j,1], eta_list.iat[j,2])
             ex = eta_list.iat[j,1]
             ey = eta_list.iat[j,2]
             
@@ -303,10 +283,8 @@ class Boundary(object):
                     ex = ex[0]
                 else:
                     ex = ex[abs(ex) < 2+2*np.pi*np.finfo(float).eps]
-                
             if ex.size > 1:
                 raise NotImplementedError
-            
             if abs(ex) > 2+2*np.pi*np.finfo(float).eps:
                 w = wn(ex)
                 D_xx_list = D_xx_list + (w,)
