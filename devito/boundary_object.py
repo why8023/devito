@@ -8,7 +8,7 @@ class Boundary(object):
 
     """
     An object that contains the data relevant for implementing the
-    immersed boundary oject on the given domain.
+    immersed boundary method on a given domain.
 
     :param param0: Description.
     :param param1: (Optional) Description.
@@ -17,20 +17,25 @@ class Boundary(object):
 
     """
 
-    def __init__(self, Grid, BoundaryFunction, InverseBoundaryFunction = None):
+    def __init__(self, Grid, BoundaryFunction, InverseBoundaryFunction = None,
+                 method_order = 4):
+        self._method_order = method_order
+        
+        # Some things we'll need from, and derived from, Grid:
+        shape = np.asarray(Grid.shape)
+        extent = np.asarray(Grid.extent)
+        spacing = extent/(shape-1)
     
         # Step1: Check what kind of boundary function we have.
         # To start, this will only work for boundaries of the form:
         # x_b = const : 1d.
         # y_b = f(x), x_b = f^-1(y_b) : 2d.
+        # FIX ME: Add support for boundaries specified in text files.
         
         if not callable(BoundaryFunction):
             raise NotImplementedError
         
-        # FIX ME: All this needs refactoring.
-        self._primary_nodes(Grid, BoundaryFunction)
-        
-        self.method_order = 4 # get this from function order
+        self._primary_nodes(BoundaryFunction, shape, extent, spacing)
         
         # For 2D case:
         if np.asarray(Grid.shape).size == 1:
@@ -43,48 +48,43 @@ class Boundary(object):
             raise NotImplementedError
             
         # Generate eta's
-        self._eta_list(Grid, BoundaryFunction, InverseBoundaryFunction)
+        self._eta_list(BoundaryFunction, InverseBoundaryFunction,
+                       shape, extent, spacing)
         
         # Finally, generate our stencils
         self._fd_stencil()
         
         #print(self._fd_stencil)
         
-
-    def _primary_nodes(self, grid, BoundaryFunction):
-        """Compute 'primary boundaru nodes."""
+    @property
+    def method_order(self):
+        """
+        Order of the FD discretisation.
+        Currently this is only implemented for 4th order stencils.
+        """
+        return self._method_order
         
-        # Should all this be done symbolically or not?
 
-        if not np.ndim(grid.dimensions) <= 2:
+    def _primary_nodes(self, BoundaryFunction, shape, extent, spacing):
+        
+        """
+        Compute the primary boundary nodes.
+        Other nodes in the boundary sub-domain can be derived from
+        these.
+        """
+
+        if shape.size > 2:
             raise NotImplementedError
-        
-        dimensions = grid.dimensions
-
-        # FIX ME: Must be a better way of doing this:        
-        shape = np.asarray(grid.shape)
-        extent = np.asarray(grid.extent)
-        
-        spacing = extent/(shape-1)
         
         if shape.size == 1:
             x_coords = np.linspace(0,extent[0],shape[0])
             # In this case the boundary is a single node
             boundary = BoundaryFunction()
             pn = np.floor(boundary/spacing[0]).astype(int)
-            # Check if node is on or off the boundary:
-            boundary_logic_list = None
-            # FIX ME: Below code is horrible!!
-            # First two cases shouldn't occur in 1D.
-            if pn >= shape[0]:
-                pass
-            elif pn < 0:
-                pass
-            else:
-                if abs(boundary-x_coords[pn]) < 2*np.pi*np.finfo(float).eps:
-                    boundary_logic_list = 'on'
-                else:
-                    boundary_logic_list = 'off'
+            # These two cases shouldn't occur in 1D:
+            if pn < 0 or pn >= shape[0]:
+                raise ValueError("Given boundary location is not \
+                                  in the computational domain.")
         elif shape.size == 2:
             # FIX ME: Support non zero origin case
             x_coords = np.linspace(0,extent[0],shape[0])
@@ -185,15 +185,11 @@ class Boundary(object):
         
         return self._node_list
     
-    def _eta_list(self, grid, BoundaryFunction, InverseBoundaryFunction):
+    def _eta_list(self, BoundaryFunction, InverseBoundaryFunction,
+                  shape, extent, spacing):
     
         # Tidy up and remove these 're-sets'
         node_list = self._node_list
-        
-        shape = np.asarray(grid.shape)
-        extent = np.asarray(grid.extent)
-        
-        spacing = extent/(shape-1)
         
         pn = self._primary_nodes
         
