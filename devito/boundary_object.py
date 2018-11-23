@@ -22,7 +22,7 @@ class Boundary(object):
         # Step1: Check what kind of boundary function we have.
         # To start, this will only work for boundaries of the form:
         # x_b = const : 1d.
-        # y_b = f(x) : 2d.
+        # y_b = f(x), x_b = f^-1(y_b) : 2d.
         
         if not callable(BoundaryFunction):
             raise NotImplementedError
@@ -156,12 +156,12 @@ class Boundary(object):
             d = np.array([abs(dpnb[j]), abs(dpnf[j])], dtype=int)
             d[d >= shape[1]] = -1
             dm = max(d)
-            if dm <= 0:
+            if dm < 0:
                 box[j] = 0
             elif dm <= ds+1:
                 box[j] = ds
             else:
-                box[j] = ds-1
+                box[j] = dm-1
         
         # Create boundary node list - initial size unknown
         # FIX ME: Disgusting code
