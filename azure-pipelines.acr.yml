@@ -143,6 +143,7 @@ jobs:
 # safely test variables as conditionals
   - bash: | 
       export HOME=/devito
+
   
       if [ -v devitoBackend ] ; then
         export DEVITO_BACKEND=$(devitoBackend) ;
@@ -159,7 +160,10 @@ jobs:
         export PYTHONPATH=${PYTHONPATH}:/devito/lib/python3.6/site-packages
         python setup.py test ; 
       elif [ $(testMethod) == 'conda' ] ; then
+        echo "HOME is ${HOME}"
+        echo "PATH is ${PATH}"
         source activate devito ;
+        echo "PATH is now ${PATH}"
         py.test --cov devito tests/ ;
         if [ ! -v devitoBackend ] ; then 
           python examples/seismic/benchmark.py test -P tti -so 4 -a -d 20 20 20 -n 5 ;
