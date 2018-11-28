@@ -3,6 +3,7 @@ from __future__ import absolute_import
 from functools import partial
 
 from sympy import S, finite_diff_weights
+from sympy import symbols, IndexedBase, Indexed, Idx
 
 from devito.finite_differences import Differentiable
 from devito.tools import Tag
@@ -198,6 +199,7 @@ def first_derivative(expr, **kwargs):
         ind = [(dim + i * diff) for i in range(-int(order / 2),
                                                int((order + 1) / 2) + 1)]
     # Finite difference weights from Taylor approximation with this positions
+    
     c = finite_diff_weights(1, ind, dim)
     c = c[-1][-1]
     all_dims = tuple(set((dim,) + tuple([i for i in expr.indices if i.root == dim])))
@@ -225,7 +227,20 @@ def generic_derivative(expr, deriv_order, dim, fd_order, **kwargs):
     indices = [(dim + i * dim.spacing) for i in range(-fd_order//2, fd_order//2 + 1)]
     if fd_order == 1:
         indices = [dim, dim + dim.spacing]
-    c = finite_diff_weights(deriv_order, indices, dim)[-1][-1]
+        
+    #print(deriv_order)
+    #print(indices)
+    #print(dim)
+        
+    #c = finite_diff_weights(deriv_order, indices, dim)[-1][-1]
+    c = finite_diff_symbolic_weights(deriv_order, indices, dim)
+    
+    #print(c)
+    #help(c)
+    #print(c[0])
+    #help(c[0])
+    
+    
     deriv = 0
     all_dims = tuple(set((dim, ) +
                      tuple([i for i in expr.indices if i.root == dim])))
@@ -392,3 +407,16 @@ def generate_fd_shortcuts(function):
             derivatives[name_fd] = (deriv, desciption)
 
     return derivatives
+
+def finite_diff_symbolic_weights(deriv_order, indices, dim):
+    
+    # Probably don't need deriv_order and dim here but keep for now
+    # in case we need to store them somehow?
+    
+    n_weights = str(len(indices))
+    print('W0:'+n_weights)
+    W = list(symbols('W0:'+n_weights))
+    
+    #print(W)
+    
+    return W
