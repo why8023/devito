@@ -77,14 +77,11 @@ jobs:
      dockerFile: Dockerfile.pipelines
      
   steps:
-  # Now build the container, tagging per-build and updating
-  # the 'latest' tag before pushing out to registry
+  # Now build the container and push it out to registry
   - script: |
-      docker build -f $(dockerFile) -t $(dockerId).azurecr.io/$(imageName):$(Build.BuildId) --build-arg gccvers=$(gccVersion) --build-arg installMethod=$(installMethod) --build-arg yask=$(installYask) .
-      docker tag $(dockerId).azurecr.io/$(imageName):$(Build.BuildId) $(dockerId).azurecr.io/$(imageName):latest
+      docker build -f $(dockerFile) -t $(dockerId).azurecr.io/$(imageName) --build-arg gccvers=$(gccVersion) --build-arg installMethod=$(installMethod) --build-arg yask=$(installYask) .
       docker login -u $(dockerId) -p $(dockerPassword) $(dockerId).azurecr.io
-      docker push $(dockerId).azurecr.io/$(imageName):$(Build.BuildId)
-      docker push $(dockerId).azurecr.io/$(imageName):latest
+      docker push $(dockerId).azurecr.io/$(imageName)
 
 
 # Use the built container to run tests
