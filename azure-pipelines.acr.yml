@@ -1,0 +1,188 @@
+# Configure building and testing in Azure pipelines
+
+# Define pipelines-internal names for containers which
+# will be built and used for testing. These are of the
+# form 'devito[-<backend>]-<installMethod>-<gccVersion>
+
+resources:
+  containers:
+  - container: devito-pip-gcc49
+    image: 'tmbgreaves/devito-pip-gcc4.9'
+  - container: devito-conda-gcc49
+    image: 'tmbgreaves/devito-conda-gcc4.9'
+  - container: devito-conda-gcc5
+    image: 'tmbgreaves/devito-conda-gcc5'
+  - container: devito-conda-gcc7
+    image: 'tmbgreaves/devito-conda-gcc7'
+  - container: devito-yask-conda-gcc7
+    image: 'tmbgreaves/devito-yask-conda-gcc7'
+  - container: devito-conda-gcc8
+    image: 'tmbgreaves/devito-conda-gcc8'
+
+# Now move into the main pipeline jobs
+
+jobs:
+
+# First job is to build containers. This uses a
+# matrix which passes environment through to the
+# container build. Variables used are:
+#
+#   variable       | values
+#   ---------------|-------------
+#   gccVersion     | 4.9, 5, 7, 8
+#   installMethod  | pip, conda
+#   installYask    | true, false
+#   imageBaseName  | <string>
+#   
+- job: Container_Build
+  displayName: 'Build using'
+  pool:
+    vmImage: 'Ubuntu 16.04'
+  strategy:
+    matrix:
+      pip-gcc4:
+        gccVersion: '4.9'
+        installMethod: 'pip'
+        installYask: 'false'
+        imageBaseName: 'devito'
+      conda-gcc4:
+        gccVersion: '4.9'
+        installMethod: 'conda'
+        installYask: 'false'
+        imageBaseName: 'devito'
+      conda-gcc5:
+        gccVersion: '5'
+        installMethod: 'conda'
+        installYask: 'false'
+        imageBaseName: 'devito'
+      conda-gcc7:
+        gccVersion: '7'
+        installMethod: 'conda'
+        installYask: 'false'
+        imageBaseName: 'devito'
+      yask-conda-gcc7:
+        gccVersion: '7'
+        installMethod: 'conda'
+        installYask: 'true'
+        imageBaseName: 'devito-yask'
+      conda-gcc8:
+        gccVersion: '8'
+        installMethod: 'conda'
+        installYask: 'false'
+        imageBaseName: 'devito'
+
+  # Variables common across the matrix
+  variables:
+     imageName: $(imageBaseName)-$(installMethod)-gcc$(gccVersion)
+     dockerFile: Dockerfile.pipelines
+     
+  steps:
+  # Now build the container, tagging per-build and updating
+  # the 'latest' tag before pushing out to registry
+  - script: |
+      docker build -f $(dockerFile) -t $(dockerId).azurecr.io/$(imageName):$(Build.BuildId) --build-arg gccvers=$(gccVersion) --build-arg installMethod=$(installMethod) --build-arg yask=$(installYask) .
+      docker tag $(dockerId).azurecr.io/$(imageName):$(Build.BuildId) $(dockerId).azurecr.io/$(imageName):latest
+      docker login -u $(dockerId) -p $(dockerPassword) $(dockerId).azurecr.io
+      docker push $(dockerId).azurecr.io/$(imageName):$(Build.BuildId)
+      docker push $(dockerId).azurecr.io/$(imageName):latest
+
+
+# Use the built container to run tests
+- job: Run_Tests
+  displayName: 'Test using'
+  # Only run tests if the containers built successfully
+  dependsOn: Container_Build
+  condition: succeeded('Container_Build')
+  pool:
+    vmImage: 'Ubuntu 16.04'
+  # Another matrix, this time for testing. The container
+  # holds most of the options, set at build-time, but 
+  # since pipelines needs to know about install method
+  # for testing commands 'testMethod' is set (this should
+  # match the 'installMethod' used at build time). Options 
+  # are:
+  #
+  # variable      | values
+  # --------------|----------------------------------
+  # containerName | (See 'resources' at top of file)
+  # testMethod    | pip, conda
+  # useOpenMP     | true, false
+  # devitoBackend | yask, OPS
+
+  strategy:
+    matrix:
+      pip-gcc49:
+        containerName: devito-pip-gcc49
+        testMethod: 'pip'
+      openmp-conda-gcc49:
+        containerName: devito-pip-gcc49
+        testMethod: 'conda'
+        useOpenMP: 'true'
+      conda-gcc5: 
+        containerName: devito-conda-gcc5
+        testMethod: 'conda'
+      yask-conda-gcc7:
+        containerName: devito-yask-conda-gcc7
+        testMethod: 'conda'
+        devitoBackend: 'yask'
+      ops-conda-gcc7:
+        containerName: devito-conda-gcc7
+        testMethod: 'conda'
+        devitoBackend: 'OPS'
+      conda-gcc8: 
+        containerName: devito-conda-gcc8
+        testMethod: 'conda'
+
+# Set the container to be used to run tests. This
+# needs to use the $[variables['']] method as a 
+# straight variable doesn't appear to substitute
+# correctly 
+  container: $[ variables['containerName'] ]
+# Most runs seem to take ~50 minutes on pipelines
+# hosted nodes, so 120 ought to be safe.
+  timeoutInMinutes: 120
+  steps:
+# Tests are run in a bash script for ability to 
+# safely test variables as conditionals
+  - bash: | 
+      export HOME=/devito
+  
+      if [ -v devitoBackend ] ; then
+        export DEVITO_BACKEND=$(devitoBackend) ;
+        echo "Setting DEVITO_BACKEND=${DEVITO_BACKEND}" ;
+      fi
+
+      if [ -v useOpenMP ] ; then
+        export DEVITO_OPENMP=1 ;
+        export OMP_NUM_THREADS=2 ;
+        echo "Setting DEVITO_OPENMP=${DEVITO_OPENMP} and OMP_NUM_THREADS=${OMP_NUM_THREADS}"
+      fi
+
+      if [ $(testMethod) == 'pip' ] ; then
+        export PYTHONPATH=${PYTHONPATH}:/devito/lib/python3.6/site-packages
+        python setup.py test ; 
+      elif [ $(testMethod) == 'conda' ] ; then
+        source activate devito ;
+        py.test --cov devito tests/ ;
+        if [ ! -v devitoBackend ] ; then 
+          python examples/seismic/benchmark.py test -P tti -so 4 -a -d 20 20 20 -n 5 ;
+          python examples/seismic/benchmark.py test -P acoustic -a ;
+          python examples/seismic/acoustic/acoustic_example.py --full ;
+          python examples/seismic/acoustic/acoustic_example.py --full --checkpointing ;
+          python examples/seismic/acoustic/acoustic_example.py --constant --full ;
+          python examples/misc/linalg.py mat-vec mat-mat-sum transpose-mat-vec ;
+          python examples/seismic/tti/tti_example.py -a ;
+          python examples/seismic/tti/tti_example.py -a --noazimuth ; 
+          python examples/seismic/elastic/elastic_example.py ; 
+          py.test --nbval examples/cfd ; 
+          py.test --nbval examples/seismic/tutorials/0[1-3]* ; 
+          py.test --nbval examples/compiler ;
+          codecov ;
+        fi
+      fi
+      
+      sphinx-apidoc -f -o docs/ examples 
+      sphinx-apidoc -f -o docs/ devito devito/yask/* 
+      pushd docs 
+      make html 
+      popd 
