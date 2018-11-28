@@ -18,11 +18,11 @@ RUN apt-get -y dist-upgrade
 RUN apt-get -y install wget bzip2 git make
 
 # Default gcc version to install; can be overridden in Jenkinsfile
-ARG gccvers=4.9
+ARG gccvers=8
 ENV DEVITO_ARCH=gcc-$gccvers
 
 # Default devito install method
-ARG installMethod=pip
+ARG installMethod=conda
 
 # Whether to install yask
 ARG yask=false
@@ -57,19 +57,15 @@ RUN conda update -q conda
 RUN echo "dash dash/sh boolean false" | debconf-set-selections
 RUN DEBIAN_FRONTEND=noninteractive dpkg-reconfigure dash
 
-COPY . /devito
-WORKDIR /devito
 
-ARG installUID=1001
-RUN adduser --disabled-password --gecos "" -u $installUID installer
-RUN chown -R $installUID /devito
-USER installer
-ENV HOME=/devito
-ENV PYTHONPATH=$(PYTHONPATH):/devito/lib/python3.6/site-packages
+RUN adduser --disabled-password --gecos "" devito
+USER devito
+
+COPY . /home/devito
+WORKDIR /home/devito
 
 RUN if [ $installMethod == "pip" ] ; then \ 
-      mkdir -p /devito/lib/python3.6/site-packages/ ; \
-      python setup.py install --prefix=/devito ; \
+      python setup.py install --user ; \
     elif [ $installMethod == "conda" ] ; then \
       conda env create -q -f environment.yml ; \
       source activate devito ; \
@@ -86,5 +82,4 @@ RUN if [ $installMethod == "pip" ] ; then \
       fi ; \
     fi
 
-USER root
-RUN deluser installer
+CMD /home/devito/azure-pipelines.sh

@@ -1,0 +1,45 @@
+jobs:
+
+- job: build_and_test
+  displayName:  'Test using '
+  pool:
+    vmImage: 'Ubuntu 16.04'
+  strategy:
+    matrix:
+      pip-gcc4:
+        gccVersion: '4.9'
+        installMethod: 'pip'
+        installYask: 'false'
+      openmp-conda-gcc4:
+        gccVersion: '4.9'
+        useOpenMP: 'true'
+      conda-gcc5:
+        gccVersion: '5'
+      ops-conda-gcc7:
+        gccVersion: '7'
+        devitoBackend: 'OPS'
+      yask-conda-gcc7:
+        gccVersion: '7'
+        installYask: 'true'
+        devitoBackend: 'yask'
+      conda-gcc8:
+        gccVersion: '8'
+
+  steps:
+  - task: Docker@1
+    displayName: "Build container"
+    inputs:
+      command: 'build'
+      dockerFile: Dockerfile.pipelines
+      arguments:
+        --build-arg gccvers=$(gccVersion)
+        --build-arg installMethod=$(installMethod)
+        --build-arg yask=$(installYask)"
+  - task: Docker@1
+    displayName: "Run test script"
+    inputs:
+      command: 'run'
+      envVars: 
+        devitoBackend=$(devitoBackend)
+        testMethod=$(installMethod)
+        useOpenMP=$(useOpenMP) 
