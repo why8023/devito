@@ -340,7 +340,8 @@ if (fromrank != MPI_PROC_NULL)
         assert str(iet.body[0]) == """\
 if (mxl)
 {
-  sendrecv_f(f_vec,1,y_size + 1 + 1,otime,1,0,otime,x_size + 1,0,nb->xright,nb->xleft,comm);
+  sendrecv_f(f_vec,1,y_size + 1 + 1,otime,1,0,otime,x_size + 1,0,\
+nb->xright,nb->xleft,comm);
 }
 if (mxr)
 {
@@ -348,7 +349,8 @@ if (mxr)
 }
 if (myl)
 {
-  sendrecv_f(f_vec,x_size + 1 + 1,1,otime,0,1,otime,0,y_size + 1,nb->yright,nb->yleft,comm);
+  sendrecv_f(f_vec,x_size + 1 + 1,1,otime,0,1,otime,0,y_size + 1,\
+nb->yright,nb->yleft,comm);
 }
 if (myr)
 {
