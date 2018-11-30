@@ -102,3 +102,5 @@ RUN if [ $installWithPip == "true" ] ; then \
         popd ; \
       fi ; \
     fi
+
+ENTRYPOINT /home/devito/azure-pipelines.py
