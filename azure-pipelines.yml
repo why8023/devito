@@ -12,8 +12,10 @@ jobs:
       openmp-conda-gcc4:
         gccVersion: '4.9'
         useOpenMP: 'true'
+        useMPI: 'false'
       conda-gcc5:
         gccVersion: '5'
+        useMPI: 'false'
       ops-conda-gcc7:
         gccVersion: '7'
         devitoBackend: 'ops'
@@ -35,6 +37,7 @@ jobs:
         --build-arg installWithPip=$(installWithPip)
         --build-arg backend=$(devitoBackend)
         --build-arg openmp=$(useOpenMP)
+        --build-arg mpi=$(useMPI)
   - task: Docker@1
     displayName: "Run tests"
     inputs:

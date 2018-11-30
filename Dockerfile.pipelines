@@ -20,7 +20,7 @@ RUN apt-get -y dist-upgrade
 # Needed for the conda and devito installs later
 RUN apt-get -y install wget bzip2 git make
 
-# Default gcc version to install; can be overridden in Jenkinsfile
+# Default gcc version to install
 ARG gccvers=8
 ENV DEVITO_ARCH=gcc-$gccvers
 
@@ -32,9 +32,13 @@ ENV testWithPip=$installWithPip
 ARG backend=none
 ENV devitoBackend=$backend
 
-# Use OpenMP rather than MPI?
+# Use OpenMP?
 ARG openmp=false
 ENV useOpenMP=$openmp
+
+# Use MPI?
+ARG mpi=true
+ENV useMPI=$mpi
 
 # Install gcc/g++
 RUN apt-get -y install gcc-$gccvers g++-$gccvers
@@ -55,7 +59,7 @@ RUN if [ -f /usr/bin/gcov-tool-$gccvers ] ; then \
     fi
 
 # Install MPI
-RUN if [ $useOpenMP != "true" ] ; then \
+RUN if [ $useMPI != "false" ] ; then \
       apt-get install -y -q mpich libmpich-dev ; \
     fi
 
@@ -85,7 +89,7 @@ RUN if [ $installWithPip == "true" ] ; then \
       echo $PATH ; \
       pip install -e . ; \
       pip install pytest-xdist ; \
-      if [ $useOpenMP != "true" ] ; then \
+      if [ $useMPI != "false" ] ; then \
         pip install -r requirements-optional.txt ; \
       fi ;\
       if [ $devitoBackend == "yask" ] ; then \

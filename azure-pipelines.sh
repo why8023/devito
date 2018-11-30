@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-set -e
+set -o pipefail
 
 if [ "x${devitoBackend}" == "xyask" ] || [ "x${devitoBackend}" == "xops" ] ; then
   export DEVITO_BACKEND=${devitoBackend} ;
