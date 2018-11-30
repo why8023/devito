@@ -3,7 +3,7 @@ from __future__ import absolute_import
 from functools import partial
 
 from sympy import S, finite_diff_weights
-from sympy import symbols, IndexedBase, Indexed, Idx
+from sympy import symbols, IndexedBase, Indexed, Idx, Function
 
 from devito.finite_differences import Differentiable
 from devito.tools import Tag
@@ -410,13 +410,11 @@ def generate_fd_shortcuts(function):
 
 def finite_diff_symbolic_weights(deriv_order, indices, dim):
     
-    # Probably don't need deriv_order and dim here but keep for now
-    # in case we need to store them somehow?
+    n_weights = len(indices)
     
-    n_weights = str(len(indices))
-    print('W0:'+n_weights)
-    W = list(symbols('W0:'+n_weights))
+    W = Function('W')
+    weights = []
+    for j in range(n_weights):
+        weights += [W(indices[j]),]
     
-    #print(W)
-    
-    return W
+    return weights

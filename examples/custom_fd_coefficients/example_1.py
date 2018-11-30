@@ -7,7 +7,11 @@ from math import exp
 import matplotlib
 import matplotlib.pyplot as plt
 
-from sympy import symbols, IndexedBase, Indexed, Idx
+from sympy import symbols, IndexedBase, Indexed, Idx, Function
+
+# Remove
+from sympy import Wild
+from sympy.abc import x, y
 
 # Grid
 Lx = 10
@@ -30,14 +34,36 @@ u.data[:] = 0.0
 
 # Main equations
 eq = Eq(u.dt+u.dx)
-#eq = Eq(u.dx, u)
 
-print(eq)
+#syms  = eq.free_symbols
 
-e.match(p*q**r)
-{p_: 4, q_: x, r_: 2}
->>> (p*q**r).xreplace(e.match(p*q**r))
-4*x**2
+#print(list(syms))
+#print(list(syms)[-1:])
+
+W = Function('W')
+W = W(x[0])
+print(W)
+print(eq.xreplace({W: 4}))
+
+#print(eq.subs(W, 3))
+
+#W0, W1, W2, W3, W4 = symbols('W0 W1 W2 W3 W4')
+
+#u0, u1, u2, u3, u4 = symbols('u0 u1 u2 u3 u4')
+
+#print(eq.match(w0+w1+w2+w3+w4))
+#print(eq.match(w0*u0+w1*u1+w2*u2+w3*u3+w4*u4))
+
+#x, y, z = symbols('x y z')
+#p = Wild("p")
+#q = Wild("q")
+#r = Wild("r")
+#e = (x+y)**(x+y)
+#print(e.match(p**p))
+#print(e.match(p**q))
+#e = (2*x)**2
+#print(e.match(p*q**r))
+#print((p*q**r).xreplace(e.match(p*q**r)))
 
 
 #stencil = solve(eq, u.forward)
