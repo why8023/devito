@@ -29,16 +29,17 @@ ARG installWithPip=false
 ENV testWithPip=$installWithPip
 
 # Use a different back-end?
-ARG backend=none
-ENV devitoBackend=$backend
+ARG DEVITO_BACKEND=none
+ENV DEVITO_BACKEND=$DEVITO_BACKEND
 
 # Use OpenMP?
-ARG openmp=false
-ENV useOpenMP=$openmp
+ARG DEVITO_OPENMP=0
+ENV DEVITO_OPENMP=$DEVITO_OPENMP
+ENV OMP_NUM_THREADS=2
 
 # Use MPI?
-ARG mpi=true
-ENV useMPI=$mpi
+ARG DEVITO_MPI=1
+ENV DEVITO_MPI=$DEVITO_MPI
 
 # Install gcc/g++
 RUN apt-get -y install gcc-$gccvers g++-$gccvers
@@ -59,7 +60,7 @@ RUN if [ -f /usr/bin/gcov-tool-$gccvers ] ; then \
     fi
 
 # Install MPI
-RUN if [ $useMPI != "false" ] ; then \
+RUN if [ $DEVITO_MPI != "0" ] ; then \
       apt-get install -y -q mpich libmpich-dev ; \
     fi
 
@@ -89,10 +90,10 @@ RUN if [ $installWithPip == "true" ] ; then \
       echo $PATH ; \
       pip install -e . ; \
       pip install pytest-xdist ; \
-      if [ $useMPI != "false" ] ; then \
+      if [ $DEVITO_MPI != "0" ] ; then \
         pip install -r requirements-optional.txt ; \
       fi ;\
-      if [ $devitoBackend == "yask" ] ; then \
+      if [ $DEVITO_BACKEND == "yask" ] ; then \
         conda install swig ; \ 
         git clone https://github.com/opesci/yask.git /tmp/yask ; \
         pushd /tmp/yask ; \ 
@@ -101,5 +102,3 @@ RUN if [ $installWithPip == "true" ] ; then \
         popd ; \
       fi ; \
     fi
-
-ENTRYPOINT /home/devito/azure-pipelines.sh
