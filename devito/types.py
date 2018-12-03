@@ -599,19 +599,6 @@ class AbstractCachedFunction(AbstractFunction, Cached):
         return EnrichedTuple(*extents, getters=self.dimensions, left=left, right=right)
 
     @cached_property
-    def _extent_nopad(self):
-        """
-        The number of points in the domain+halo region.
-        """
-        left = tuple(i for i, _ in np.add(self._halo, self._padding))
-        right = tuple(i for _, i in np.add(self._halo, self._padding))
-
-        Extent = namedtuple('Extent', 'left right')
-        extents = tuple(Extent(i, j) for i, j in np.add(self._halo, self._padding))
-
-        return EnrichedTuple(*extents, getters=self.dimensions, left=left, right=right)
-
-    @cached_property
     def _extent_padding(self):
         """
         The number of points in the padding region.
@@ -621,6 +608,27 @@ class AbstractCachedFunction(AbstractFunction, Cached):
 
         Extent = namedtuple('Extent', 'left right')
         extents = tuple(Extent(i, j) for i, j in self._padding)
+
+        return EnrichedTuple(*extents, getters=self.dimensions, left=left, right=right)
+
+    @cached_property
+    def _extent_nopad(self):
+        """
+        The number of points in the domain+halo region.
+        """
+        extents = tuple(i+sum(j) for i, j in zip(self._extent_domain, self._extent_halo))
+        return EnrichedTuple(*extents, getters=self.dimensions)
+
+    @cached_property
+    def _extent_nodomain(self):
+        """
+        The number of points in the padding+halo region.
+        """
+        left = tuple(i for i, _ in np.add(self._halo, self._padding))
+        right = tuple(i for _, i in np.add(self._halo, self._padding))
+
+        Extent = namedtuple('Extent', 'left right')
+        extents = tuple(Extent(i, j) for i, j in np.add(self._halo, self._padding))
 
         return EnrichedTuple(*extents, getters=self.dimensions, left=left, right=right)
 
@@ -673,21 +681,21 @@ class AbstractCachedFunction(AbstractFunction, Cached):
             The side of interest (LEFT, RIGHT). Irrelevant for certain regions.
         """
         if region is DOMAIN:
-            offset = self._offset_domain[dim].left
+            offset = self._offset_domain[dim]
             extent = self._extent_domain[dim]
         elif region is OWNED:
             if side is LEFT:
-                offset = self._offset_domain[dim].left
-                extent = self._extent_halo[dim].right
+                offset = self._offset_owned[dim].left
+                extent = self._extent_owned[dim].left
             else:
-                offset = self._offset_halo[dim].left + self._extent_domain[dim]
-                extent = self._extent_halo[dim].left
+                offset = self._offset_owned[dim].right
+                extent = self._extent_owned[dim].right
         elif region is HALO:
             if side is LEFT:
                 offset = self._offset_halo[dim].left
                 extent = self._extent_halo[dim].left
             else:
-                offset = self._offset_domain[dim].left + self._extent_domain[dim]
+                offset = self._offset_halo[dim].right
                 extent = self._extent_halo[dim].right
         else:
             raise ValueError("Unknown region `%s`" % str(region))
