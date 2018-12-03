@@ -196,6 +196,13 @@ class TestDataBasic(object):
         assert v._offset_domain.left == v._offset_domain.right == (3, 5, 6)
         assert v._extent_padding == ((1, 1), (3, 3), (4, 4))
         assert v._extent_padding.left == v._extent_padding.right == (1, 3, 4)
+        assert v._extent_nopad == ((3, 3), (5, 5), (6, 6))
+        assert v._extent_nopad.left == v._extent_nopad.right == (3, 5, 6)
+
+        # With non-uniform halo
+        v2 = Function(name='v', grid=grid, space_order=(2, 1, 4))
+        assert v2._extent_halo == ((1, 4), (1, 4), (1, 4))
+        assert v2._extent_owned == ((4, 1), (4, 1), (4, 1))
 
     def test_indexing_into_sparse(self):
         """

@@ -614,6 +614,32 @@ class AbstractCachedFunction(AbstractFunction, Cached):
         return EnrichedTuple(*extents, getters=self.dimensions, left=left, right=right)
 
     @cached_property
+    def _extent_owned(self):
+        """
+        The number of points in the owned region.
+        """
+        left = self._extent_halo.right
+        right = self._extent_halo.left
+
+        Extent = namedtuple('Extent', 'left right')
+        extents = tuple(Extent(i.right, i.left) for i in self._extent_halo)
+
+        return EnrichedTuple(*extents, getters=self.dimensions, left=left, right=right)
+
+    @cached_property
+    def _extent_nopad(self):
+        """
+        The number of points in the domain+halo region.
+        """
+        left = tuple(i for i, _ in np.add(self._halo, self._padding))
+        right = tuple(i for _, i in np.add(self._halo, self._padding))
+
+        Extent = namedtuple('Extent', 'left right')
+        extents = tuple(Extent(i, j) for i, j in np.add(self._halo, self._padding))
+
+        return EnrichedTuple(*extents, getters=self.dimensions, left=left, right=right)
+
+    @cached_property
     def _extent_padding(self):
         """
         The number of points in the padding region.
